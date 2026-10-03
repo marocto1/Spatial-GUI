@@ -1,5 +1,30 @@
 # Spatial GUI
 
+> ## Minecraft 1.20.1 Forge Backport
+>
+> This fork includes an **unofficial backport of Spatial GUI 1.6 to Minecraft 1.20.1 Forge**.
+>
+> The goal is to bring Spatial GUI to the widely-used **Minecraft 1.20.1 + Forge 47.4.x + Java 17** stack while keeping the original immersive 3D inventory/container experience as close to upstream as possible.
+>
+> **Backport details**
+> - Minecraft **1.20.1**
+> - Forge **47.4.x**
+> - Java **17**
+> - Base version: **Spatial GUI 1.6**
+> - Requires **Cloth Config 11.x for Forge**
+> - **MixinExtras 0.5.5 is bundled** in the release JAR
+> - Forge-specific screen hooks, events, keybind handling and rendering integration were added for 1.20.1
+>
+> **Download:** [Spatial GUI 1.6 — Forge 1.20.1 Backport](https://github.com/marocto1/Spatial-GUI/releases/tag/v1.6-forge-1.20.1)
+>
+> **Source branch:** [`forge-1.20.1`](https://github.com/marocto1/Spatial-GUI/tree/forge-1.20.1)
+>
+> This is **not an official upstream release**. Original project by [tastytrash](https://github.com/tastytrash/Spatial-GUI), licensed under MIT.
+>
+> **Socials:** Telegram — [@MaroctoDestiny](https://t.me/MaroctoDestiny)
+
+---
+
 **A client-side mod that renders inventory & container screens as a 3D plane, making the GUI more immersive.**
 ___
 ## Features
