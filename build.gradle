@@ -1,3 +1,13 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:[6.0,6.2)'
+    }
+}
+
 plugins {
     id 'dev.kikugie.loom-back-compat' apply false
     id 'net.neoforged.moddev' version '2.0.147' apply false
@@ -9,6 +19,7 @@ group = project.maven_group
 
 def dependencyVersions = [
         "1.20.1-fabric":   [minecraft: "1.20.1", minecraft_dependency: "1.20.1", fabric: "0.92.2+1.20.1", loader: "0.19.3", cloth_config: "11.1.106", modmenu: "7.2.2", obfuscated: true, java: 17],
+        "1.20.1-forge":    [minecraft: "1.20.1", minecraft_dependency: "[1.20.1,1.20.2)", forge: "1.20.1-47.4.20", cloth_config: "11.1.118", obfuscated: true, java: 17],
         "1.21.1-neoforge": [minecraft: "1.21.1", minecraft_dependency: "1.21.1", neoforge: "21.1.240", cloth_config: "15.0.140", obfuscated: true, java: 21],
         "1.21.1-fabric":   [minecraft: "1.21.1", minecraft_dependency: "1.21.1", fabric: "0.116.0+1.21.1", loader: "0.19.3", cloth_config: "15.0.140", modmenu: "11.0.4", obfuscated: true, java: 21],
         "1.21.11-neoforge":[minecraft: "1.21.11", minecraft_dependency: ">=1.21.6 <=1.21.11", neoforge: "21.11.42", cloth_config: "21.11.153", obfuscated: true, java: 21],
@@ -25,12 +36,15 @@ def nodeName = stonecutter.current.project
 def loader = nodeName.substring(nodeName.lastIndexOf('-') + 1)
 def isFabric = loader == 'fabric'
 def isNeoForge = loader == 'neoforge'
+def isForge = loader == 'forge'
 def isObfuscated = (dependencyVersions[nodeName]?.obfuscated) ?: false
 
 if (isFabric) {
     apply plugin: 'dev.kikugie.loom-back-compat'
 } else if (isNeoForge) {
     apply plugin: 'net.neoforged.moddev'
+} else if (isForge) {
+    apply plugin: 'net.minecraftforge.gradle'
 }
 
 if (project.hasProperty('stonecutter')) {
@@ -47,6 +61,8 @@ if (project.hasProperty('stonecutter')) {
         }
     } else if (isNeoForge) {
         project.ext.neoforge_version = currentVersions.neoforge
+    } else if (isForge) {
+        project.ext.forge_version = currentVersions.forge
     }
 }
 
@@ -67,7 +83,11 @@ repositories {
     if (isNeoForge) {
         maven { name = "Mojang"; url = "https://libraries.minecraft.net" }
     }
+    if (isForge) {
+        maven { name = "Forge"; url = "https://maven.minecraftforge.net" }
+    }
 }
+
 dependencies {
     if (isFabric) {
         minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -82,6 +102,9 @@ dependencies {
         modImplementation "com.terraformersmc:modmenu:${project.modmenu_version}"
     } else if (isNeoForge) {
         implementation "me.shedaniel.cloth:cloth-config-neoforge:${project.cloth_config_version}"
+    } else if (isForge) {
+        minecraft "net.minecraftforge:forge:${project.forge_version}"
+        implementation fg.deobf("me.shedaniel.cloth:cloth-config-forge:${project.cloth_config_version}")
     }
 }
 
@@ -101,6 +124,24 @@ if (isNeoForge) {
     }
 }
 
+if (isForge) {
+    minecraft {
+        mappings channel: 'official', version: project.minecraft_version
+        copyIdeResources = true
+        runs {
+            client {
+                workingDirectory project.file('run')
+                property 'forge.logging.console.level', 'info'
+                mods {
+                    spatial_gui {
+                        source sourceSets.main
+                    }
+                }
+            }
+        }
+    }
+}
+
 processResources {
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
@@ -108,6 +149,7 @@ processResources {
 
     if (isFabric) {
         exclude "META-INF/neoforge.mods.toml"
+        exclude "META-INF/mods.toml"
         inputs.property "loader_version", project.loader_version
         inputs.property "minecraft_dependency", project.minecraft_dependency
         inputs.property "cloth_config_version", project.cloth_config_version
@@ -120,6 +162,7 @@ processResources {
         }
     } else if (isNeoForge) {
         exclude "fabric.mod.json"
+        exclude "META-INF/mods.toml"
         inputs.property "neoforge_version", project.neoforge_version
         inputs.property "minecraft_dependency", project.minecraft_dependency
         filesMatching("META-INF/neoforge.mods.toml") {
@@ -128,15 +171,20 @@ processResources {
                     "neoforge_version": project.neoforge_version,
                     "minecraft_dependency": project.minecraft_dependency
         }
+    } else if (isForge) {
+        exclude "fabric.mod.json"
+        exclude "META-INF/neoforge.mods.toml"
+        inputs.property "minecraft_dependency", project.minecraft_dependency
+        filesMatching("META-INF/mods.toml") {
+            expand "version": project.version,
+                    "minecraft_version": project.minecraft_version,
+                    "minecraft_dependency": project.minecraft_dependency
+        }
     }
 }
 
 def targetJavaVersion = dependencyVersions[nodeName]?.java ?: 25
 tasks.withType(JavaCompile).configureEach {
-    // ensure that the encoding is set to UTF-8, no matter what the system default is
-    // this fixes some edge cases with special characters not displaying correctly
-    // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
-    // If Javadoc is generated, this must be specified in that task too.
     it.options.encoding = "UTF-8"
     if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
         it.options.release.set(targetJavaVersion)
@@ -148,9 +196,6 @@ java {
     if (JavaVersion.current() < javaVersion) {
         toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
     }
-    // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
-    // if it is present.
-    // If you remove this line, sources will not be generated.
     withSourcesJar()
 }
 
@@ -160,7 +205,6 @@ jar {
     }
 }
 
-// configure the maven publication
 publishing {
     publications {
         create("mavenJava", MavenPublication) {
@@ -168,12 +212,6 @@ publishing {
             from components.java
         }
     }
-
-    // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
     repositories {
-        // Add repositories to publish to here.
-        // Notice: This block does NOT have the same function as the block in the top level.
-        // The repositories here will be used for publishing your artifact, not for
-        // retrieving dependencies.
     }
 }
