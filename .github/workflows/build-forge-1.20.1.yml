@@ -25,31 +25,37 @@ jobs:
         run: chmod +x gradlew
       - name: Build Forge 1.20.1
         run: ./gradlew :1.20.1-forge:build --stacktrace
+      - name: Verify Forge mixin manifest
+        run: |
+          JAR="versions/1.20.1-forge/build/libs/spatial-gui-1.6+1.20.1-forge.jar"
+          unzip -p "$JAR" META-INF/MANIFEST.MF | tee manifest.txt
+          grep -F "MixinConfigs: spatial-gui.mixins.json" manifest.txt
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
-          name: spatial-gui-1.20.1-forge-r2
+          name: spatial-gui-1.20.1-forge-r3
           path: versions/1.20.1-forge/build/libs/*.jar
           if-no-files-found: error
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RELEASE_TAG="v1.6-forge-1.20.1-r2"
-          RELEASE_TITLE="Spatial GUI 1.6 — Forge 1.20.1 Backport r2"
+          RELEASE_TAG="v1.6-forge-1.20.1-r3"
+          RELEASE_TITLE="Spatial GUI 1.6 — Forge 1.20.1 Backport r3"
           RELEASE_JAR="versions/1.20.1-forge/build/libs/spatial-gui-1.6+1.20.1-forge.jar"
 
           cat > release-notes.md <<'EOF'
-          ## Spatial GUI 1.6 — Forge 1.20.1 Backport r2
+          ## Spatial GUI 1.6 — Forge 1.20.1 Backport r3
 
-          This is the **second revision of the unofficial Spatial GUI 1.6 backport for Minecraft 1.20.1 Forge**.
+          This is the **third revision of the unofficial Spatial GUI 1.6 backport for Minecraft 1.20.1 Forge**.
 
-          ### What changed in r2
+          ### What changed in r3
 
-          - Added the missing `pack.mcmeta` resource-pack metadata for Minecraft 1.20.1.
-          - Fixes Forge's startup warning that it could not load valid resource-pack information from the Spatial GUI mod file.
-          - Keeps the Forge 47.4.x / Java 17 backport from the first release.
-          - MixinExtras remains bundled inside the JAR.
+          - Fixed Spatial GUI mixins not being registered on Forge 1.20.1.
+          - Adds `MixinConfigs: spatial-gui.mixins.json` to the final JAR manifest.
+          - Fixes the runtime `ClassCastException` involving `GameRenderer` and `GameRendererInvoker` when opening inventory/container screens.
+          - Keeps the `pack.mcmeta` resource-pack fix from r2.
+          - MixinExtras 0.5.5 remains bundled inside the JAR.
 
           ### Port details
 
@@ -58,7 +64,6 @@ jobs:
           - Java: **17**
           - Spatial GUI base version: **1.6**
           - Required dependency: **Cloth Config 11.x for Forge**
-          - MixinExtras is bundled inside the release JAR
           - Forge-specific screen hooks, events, keybind handling and rendering integration are included
           - The final JAR is reobfuscated and built automatically through GitHub Actions
 
