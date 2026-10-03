@@ -64,6 +64,10 @@ if (isForge) {
     jarJar.enable()
     tasks.jarJar.finalizedBy('reobfJarJar')
     tasks.jarJar.archiveClassifier = ''
+    tasks.jarJar.archiveVersion = ''
+    tasks.jarJar.from(rootProject.file("LICENSE.txt")) {
+        rename { "LICENSE_${project.archives_base_name}.txt" }
+    }
 
     minecraft {
         mappings channel: 'official', version: project.minecraft_version
@@ -109,7 +113,7 @@ if (isForge) {
     jar {
         archiveVersion = ""
         archiveClassifier = 'plain'
-        from("LICENSE.txt") {
+        from(rootProject.file("LICENSE.txt")) {
             rename { "LICENSE_${project.archives_base_name}.txt" }
         }
     }
