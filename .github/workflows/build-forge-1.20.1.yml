@@ -28,7 +28,7 @@ jobs:
       - name: Verify Forge mixin metadata and redirect fallback
         run: |
           JAR="versions/1.20.1-forge/build/libs/spatial-gui-1.6+1.20.1-forge.jar"
-          GENERATED="versions/1.20.1-forge/src/main/java/org/tastytrash/spatialGUI/mixin/render/GameRendererMixin.java"
+          GENERATED="versions/1.20.1-forge/build/generated/stonecutter/main/java/org/tastytrash/spatialGUI/mixin/render/GameRendererMixin.java"
           unzip -p "$JAR" META-INF/MANIFEST.MF | tee manifest.txt
           grep -F "MixinConfigs: spatial-gui.mixins.json" manifest.txt
           unzip -l "$JAR" | grep -F "spatial-gui.refmap.json"
