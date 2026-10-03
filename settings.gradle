@@ -1,14 +1,6 @@
 pluginManagement {
     repositories {
         maven {
-            name = 'Fabric'
-            url = 'https://maven.fabricmc.net/'
-        }
-        maven {
-            name = 'NeoForged'
-            url = 'https://maven.neoforged.net/releases/'
-        }
-        maven {
             name = 'Forge'
             url = 'https://maven.minecraftforge.net/'
         }
@@ -27,22 +19,10 @@ pluginManagement {
 
 plugins {
     id "dev.kikugie.stonecutter" version "0.7.10"
-    id "dev.kikugie.loom-back-compat" version "0.3"
 }
 
 stonecutter {
     create(rootProject) {
-        vers("1.20.1-fabric", "1.20.1")
         vers("1.20.1-forge", "1.20.1")
-        vers("1.21.1-neoforge", "1.21.1")
-        vers("1.21.1-fabric", "1.21.1")
-        vers("1.21.11-neoforge", "1.21.11")
-        vers("1.21.11-fabric", "1.21.11")
-        vers("26.1.2-fabric", "26.1.2")
-        vers("26.1.2-neoforge", "26.1.2")
-        vers("26.2-fabric", "26.2")
-        vers("26.2-neoforge", "26.2")
-        vers("26.3-fabric", "26.3")
-        vers("26.3-neoforge", "26.3")
     }
 }
