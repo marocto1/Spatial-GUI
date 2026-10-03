@@ -61,6 +61,15 @@ if (isForge) {
         }
     }
 
+    // Forge 1.20.1 does not consume NeoForge's [[mixins]] mods.toml table.
+    // Register the mixin config through the JAR manifest so GameRendererInvoker
+    // and the rest of Spatial GUI's mixins are actually applied at runtime.
+    tasks.withType(org.gradle.api.tasks.bundling.Jar).configureEach {
+        manifest {
+            attributes 'MixinConfigs': 'spatial-gui.mixins.json'
+        }
+    }
+
     jarJar.enable()
     tasks.jarJar.finalizedBy('reobfJarJar')
     tasks.jarJar.archiveClassifier = ''
