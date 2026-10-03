@@ -43,6 +43,7 @@ if (isForge) {
     }
 
     repositories {
+        mavenCentral()
         maven { name = "Cloth Config"; url = "https://maven.shedaniel.me/" }
         maven { name = "Forge"; url = "https://maven.minecraftforge.net" }
     }
@@ -50,7 +51,19 @@ if (isForge) {
     dependencies {
         minecraft "net.minecraftforge:forge:${project.forge_version}"
         implementation fg.deobf("me.shedaniel.cloth:cloth-config-forge:${project.cloth_config_version}")
+
+        // Spatial GUI uses MixinExtras injectors such as @WrapMethod,
+        // @ModifyExpressionValue and @ModifyReturnValue. Forge 1.20.1 does
+        // not bundle MixinExtras, so embed the official Forge artifact.
+        compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.5"))
+        implementation(jarJar("io.github.llamalad7:mixinextras-forge:0.5.5")) {
+            jarJar.ranged(it, "[0.5.5,)")
+        }
     }
+
+    jarJar.enable()
+    tasks.jarJar.finalizedBy('reobfJarJar')
+    tasks.jarJar.archiveClassifier = ''
 
     minecraft {
         mappings channel: 'official', version: project.minecraft_version
@@ -95,6 +108,7 @@ if (isForge) {
 
     jar {
         archiveVersion = ""
+        archiveClassifier = 'plain'
         from("LICENSE.txt") {
             rename { "LICENSE_${project.archives_base_name}.txt" }
         }
@@ -104,7 +118,7 @@ if (isForge) {
         publications {
             create("mavenJava", MavenPublication) {
                 artifactId = project.archives_base_name
-                from components.java
+                artifact tasks.jarJar
             }
         }
     }
