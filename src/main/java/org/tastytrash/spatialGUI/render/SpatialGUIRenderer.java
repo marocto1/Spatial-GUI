@@ -15,6 +15,9 @@ import org.tastytrash.spatialGUI.util.CameraUtil;
 //? } else if neoforge {
 /*import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
+*///? } else if forge {
+/*import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraftforge.common.MinecraftForge;
 *///? }
 //? if >26.2 {
 /*import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
@@ -49,6 +52,9 @@ public class SpatialGUIRenderer {
         //? if neoforge {
         /*NeoForge.EVENT_BUS.addListener(this::onScreenRenderPre);
         NeoForge.EVENT_BUS.addListener(this::onScreenClosing);
+        *///? } else if forge {
+        /*MinecraftForge.EVENT_BUS.addListener(this::onScreenRenderPre);
+        MinecraftForge.EVENT_BUS.addListener(this::onScreenClosing);
         *///? }
     }
 
@@ -96,6 +102,21 @@ public class SpatialGUIRenderer {
     }
 
     //? if neoforge {
+    /*private void onScreenRenderPre(ScreenEvent.Render.Pre event) {
+        if (event.getScreen() == hookedScreen) {
+            event.setCanceled(true);
+            SpatialGUIRenderer.skipWindowOverride = false;
+            screenExtractor.extractIsolatedScreen(hookedScreen, event.getPartialTick(), inventoryRenderer.getQuadBasis(), inventoryRenderer.getCylinderBasis(), targetManager);
+            SpatialGUIRenderer.skipWindowOverride = true;
+        }
+    }
+
+    private void onScreenClosing(ScreenEvent.Closing event) {
+        if (event.getScreen() == hookedScreen) {
+            onScreenRemoved();
+        }
+    }
+    *///? } else if forge {
     /*private void onScreenRenderPre(ScreenEvent.Render.Pre event) {
         if (event.getScreen() == hookedScreen) {
             event.setCanceled(true);
