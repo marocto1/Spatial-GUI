@@ -18,6 +18,10 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.common.Mod;
+*///? } else if forge {
+/*import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.common.MinecraftForge;
 *///? }
 
 //? if fabric {
@@ -25,6 +29,8 @@ import net.neoforged.fml.common.Mod;
 //? } else if neoforge {
 /*@Mod(value = SpatialGUI.MOD_ID, dist = Dist.CLIENT)
 public class SpatialGUIClient {
+*///? } else if forge {
+/*public class SpatialGUIClient {
 *///? }
 
     private static SpatialGUIRenderer renderer;
@@ -46,15 +52,25 @@ public class SpatialGUIClient {
     //? } else if neoforge {
     /*public SpatialGUIClient(net.neoforged.bus.api.IEventBus modBus) {
         renderer = new SpatialGUIRenderer();
-
         modBus.addListener((RegisterKeyMappingsEvent e) -> SpatialGUIKeybinds.register(e));
-
         NeoForge.EVENT_BUS.addListener(this::onScreenInit);
     }
 
     private void onScreenInit(ScreenEvent.Init.Pre event) {
         var screen = event.getScreen();
+        if (SpatialGUIClient.shouldHookScreen(screen)) {
+            renderer.hookScreen(screen);
+        }
+    }
+    *///?} else if forge {
+    /*public SpatialGUIClient(net.minecraftforge.eventbus.api.IEventBus modBus) {
+        renderer = new SpatialGUIRenderer();
+        modBus.addListener((RegisterKeyMappingsEvent e) -> SpatialGUIKeybinds.register(e));
+        MinecraftForge.EVENT_BUS.addListener(this::onScreenInit);
+    }
 
+    private void onScreenInit(ScreenEvent.Init.Pre event) {
+        var screen = event.getScreen();
         if (SpatialGUIClient.shouldHookScreen(screen)) {
             renderer.hookScreen(screen);
         }
