@@ -6,6 +6,9 @@ on:
     branches:
       - forge-1.20.1
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -28,3 +31,19 @@ jobs:
           name: spatial-gui-1.20.1-forge
           path: versions/1.20.1-forge/build/libs/*.jar
           if-no-files-found: error
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_TAG="v1.6-forge-1.20.1"
+          RELEASE_TITLE="Spatial GUI 1.6 — Forge 1.20.1 Backport"
+          RELEASE_JAR="versions/1.20.1-forge/build/libs/spatial-gui-1.6+1.20.1-forge.jar"
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$RELEASE_JAR" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$RELEASE_JAR" \
+              --target forge-1.20.1 \
+              --title "$RELEASE_TITLE" \
+              --notes "Unofficial community backport of Spatial GUI by tastytrash for Minecraft 1.20.1 Forge 47.4.x. Requires Cloth Config 11.x. Original project is MIT licensed. This is not an official upstream release."
+          fi
