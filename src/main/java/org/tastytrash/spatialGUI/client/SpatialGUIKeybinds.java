@@ -8,10 +8,14 @@ import org.tastytrash.spatialGUI.SpatialGUI;
 
 //? if fabric {
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-//?} else {
+//?} else if neoforge {
 /*import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
+*///?} else if forge {
+/*import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.common.MinecraftForge;
 *///?}
 //? if fabric && >=26.1 {
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
@@ -70,7 +74,7 @@ public class SpatialGUIKeybinds {
         openConfig = KeyBindingHelper.registerKeyBinding(createKey());
         ClientTickEvents.END_CLIENT_TICK.register(SpatialGUIKeybinds::tick);
     }
-    *///?} else {
+    *///?} else if neoforge {
     /*public static void register(RegisterKeyMappingsEvent event) {
         if (registered) return;
         registered = true;
@@ -80,6 +84,18 @@ public class SpatialGUIKeybinds {
         openConfig = createKey();
         event.register(openConfig);
         NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post e) -> tick(Minecraft.getInstance()));
+    }
+    *///?} else if forge {
+    /*public static void register(RegisterKeyMappingsEvent event) {
+        if (registered) return;
+        registered = true;
+        openConfig = createKey();
+        event.register(openConfig);
+        MinecraftForge.EVENT_BUS.addListener((TickEvent.ClientTickEvent e) -> {
+            if (e.phase == TickEvent.Phase.END) {
+                tick(Minecraft.getInstance());
+            }
+        });
     }
     *///?}
 }
