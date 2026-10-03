@@ -16,98 +16,100 @@ version = project.mod_version
 group = project.maven_group
 
 def dependencyVersions = [
-        "1.20.1-forge": [minecraft: "1.20.1", minecraft_dependency: "[1.20.1,1.20.2)", forge: "1.20.1-47.4.20", cloth_config: "11.1.118", obfuscated: true, java: 17],
+        "26.1.2-fabric": [minecraft: "26.1.2", minecraft_dependency: "26.1.2", java: 25],
+        "1.20.1-forge":  [minecraft: "1.20.1", minecraft_dependency: "[1.20.1,1.20.2)", forge: "1.20.1-47.4.20", cloth_config: "11.1.118", obfuscated: true, java: 17],
 ]
 
 def nodeName = stonecutter.current.project
 def loader = nodeName.substring(nodeName.lastIndexOf('-') + 1)
 def isForge = loader == 'forge'
-def isObfuscated = (dependencyVersions[nodeName]?.obfuscated) ?: false
+def currentVersions = dependencyVersions[nodeName]
+
+if (currentVersions == null) {
+    throw new GradleException("Unsupported Stonecutter node: ${nodeName}")
+}
+
+project.ext.minecraft_version = currentVersions.minecraft
+project.ext.minecraft_dependency = currentVersions.minecraft_dependency
+project.ext.is_obfuscated = currentVersions.obfuscated ?: false
 
 if (isForge) {
-    apply plugin: 'net.minecraftforge.gradle'
-}
-
-if (project.hasProperty('stonecutter')) {
-    def currentVersions = dependencyVersions[nodeName]
-    project.ext.minecraft_version = currentVersions.minecraft
-    project.ext.minecraft_dependency = currentVersions.minecraft_dependency
     project.ext.cloth_config_version = currentVersions.cloth_config
     project.ext.forge_version = currentVersions.forge
-    project.ext.is_obfuscated = isObfuscated
-}
+    apply plugin: 'net.minecraftforge.gradle'
 
-base {
-    archivesName = "${project.archives_base_name}-${project.version}+${project.minecraft_version}-${loader}"
-}
+    base {
+        archivesName = "${project.archives_base_name}-${project.version}+${project.minecraft_version}-${loader}"
+    }
 
-jar {
-    archiveVersion = ""
-}
+    repositories {
+        maven { name = "Cloth Config"; url = "https://maven.shedaniel.me/" }
+        maven { name = "Forge"; url = "https://maven.minecraftforge.net" }
+    }
 
-repositories {
-    maven { name = "Cloth Config"; url = "https://maven.shedaniel.me/" }
-    maven { name = "Forge"; url = "https://maven.minecraftforge.net" }
-}
+    dependencies {
+        minecraft "net.minecraftforge:forge:${project.forge_version}"
+        implementation fg.deobf("me.shedaniel.cloth:cloth-config-forge:${project.cloth_config_version}")
+    }
 
-dependencies {
-    minecraft "net.minecraftforge:forge:${project.forge_version}"
-    implementation fg.deobf("me.shedaniel.cloth:cloth-config-forge:${project.cloth_config_version}")
-}
-
-minecraft {
-    mappings channel: 'official', version: project.minecraft_version
-    copyIdeResources = true
-    runs {
-        client {
-            workingDirectory project.file('run')
-            property 'forge.logging.console.level', 'info'
-            mods {
-                spatial_gui {
-                    source sourceSets.main
+    minecraft {
+        mappings channel: 'official', version: project.minecraft_version
+        copyIdeResources = true
+        runs {
+            client {
+                workingDirectory project.file('run')
+                property 'forge.logging.console.level', 'info'
+                mods {
+                    spatial_gui {
+                        source sourceSets.main
+                    }
                 }
             }
         }
     }
-}
 
-processResources {
-    inputs.property "version", project.version
-    inputs.property "minecraft_version", project.minecraft_version
-    inputs.property "minecraft_dependency", project.minecraft_dependency
-    filteringCharset "UTF-8"
+    processResources {
+        inputs.property "version", project.version
+        inputs.property "minecraft_version", project.minecraft_version
+        inputs.property "minecraft_dependency", project.minecraft_dependency
+        filteringCharset "UTF-8"
 
-    exclude "fabric.mod.json"
-    exclude "META-INF/neoforge.mods.toml"
-    filesMatching("META-INF/mods.toml") {
-        expand "version": project.version,
-                "minecraft_version": project.minecraft_version,
-                "minecraft_dependency": project.minecraft_dependency
-    }
-}
-
-def targetJavaVersion = 17
-tasks.withType(JavaCompile).configureEach {
-    it.options.encoding = "UTF-8"
-    it.options.release.set(targetJavaVersion)
-}
-
-java {
-    toolchain.languageVersion = JavaLanguageVersion.of(17)
-    withSourcesJar()
-}
-
-jar {
-    from("LICENSE") {
-        rename { "${it}_${project.archives_base_name}" }
-    }
-}
-
-publishing {
-    publications {
-        create("mavenJava", MavenPublication) {
-            artifactId = project.archives_base_name
-            from components.java
+        exclude "fabric.mod.json"
+        exclude "META-INF/neoforge.mods.toml"
+        filesMatching("META-INF/mods.toml") {
+            expand "version": project.version,
+                    "minecraft_version": project.minecraft_version,
+                    "minecraft_dependency": project.minecraft_dependency
         }
     }
+
+    tasks.withType(JavaCompile).configureEach {
+        it.options.encoding = "UTF-8"
+        it.options.release.set(17)
+    }
+
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(17)
+        withSourcesJar()
+    }
+
+    jar {
+        archiveVersion = ""
+        from("LICENSE.txt") {
+            rename { "LICENSE_${project.archives_base_name}.txt" }
+        }
+    }
+
+    publishing {
+        publications {
+            create("mavenJava", MavenPublication) {
+                artifactId = project.archives_base_name
+                from components.java
+            }
+        }
+    }
+} else {
+    // Upstream VCS/source node only. It exists so Stonecutter can transform
+    // the checked-in 26.1.2 Fabric source into the generated 1.20.1 Forge node.
+    apply plugin: 'base'
 }
