@@ -83,3 +83,5 @@ jobs:
               --title "$RELEASE_TITLE" \
               --notes-file release-notes.md
           fi
+
+# Release notes include the 1.20.1 port details and Marocto social links.
