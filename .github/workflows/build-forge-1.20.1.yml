@@ -25,36 +25,41 @@ jobs:
         run: chmod +x gradlew
       - name: Build Forge 1.20.1
         run: ./gradlew :1.20.1-forge:build --stacktrace
-      - name: Verify Forge mixin manifest
+      - name: Verify Forge mixin metadata
         run: |
           JAR="versions/1.20.1-forge/build/libs/spatial-gui-1.6+1.20.1-forge.jar"
           unzip -p "$JAR" META-INF/MANIFEST.MF | tee manifest.txt
           grep -F "MixinConfigs: spatial-gui.mixins.json" manifest.txt
+          unzip -l "$JAR" | grep -F "spatial-gui.refmap.json"
+          unzip -p "$JAR" spatial-gui.mixins.json | tee mixins.json
+          grep -F '"refmap": "spatial-gui.refmap.json"' mixins.json
+          unzip -p "$JAR" spatial-gui.refmap.json | grep -F 'renderBackground'
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
-          name: spatial-gui-1.20.1-forge-r3
+          name: spatial-gui-1.20.1-forge-r4
           path: versions/1.20.1-forge/build/libs/*.jar
           if-no-files-found: error
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RELEASE_TAG="v1.6-forge-1.20.1-r3"
-          RELEASE_TITLE="Spatial GUI 1.6 — Forge 1.20.1 Backport r3"
+          RELEASE_TAG="v1.6-forge-1.20.1-r4"
+          RELEASE_TITLE="Spatial GUI 1.6 — Forge 1.20.1 Backport r4"
           RELEASE_JAR="versions/1.20.1-forge/build/libs/spatial-gui-1.6+1.20.1-forge.jar"
 
           cat > release-notes.md <<'EOF'
-          ## Spatial GUI 1.6 — Forge 1.20.1 Backport r3
+          ## Spatial GUI 1.6 — Forge 1.20.1 Backport r4
 
-          This is the **third revision of the unofficial Spatial GUI 1.6 backport for Minecraft 1.20.1 Forge**.
+          This is the **fourth revision of the unofficial Spatial GUI 1.6 backport for Minecraft 1.20.1 Forge**.
 
-          ### What changed in r3
+          ### What changed in r4
 
-          - Fixed Spatial GUI mixins not being registered on Forge 1.20.1.
-          - Adds `MixinConfigs: spatial-gui.mixins.json` to the final JAR manifest.
-          - Fixes the runtime `ClassCastException` involving `GameRenderer` and `GameRendererInvoker` when opening inventory/container screens.
-          - Keeps the `pack.mcmeta` resource-pack fix from r2.
+          - Added a real Forge production Mixin refmap generated through MixinGradle.
+          - Added `spatial-gui.refmap.json` to the mixin configuration.
+          - Fixes production Mixin target remapping on Forge 1.20.1, including the `Screen.renderBackground` injection that failed in r3 with `No refMap loaded`.
+          - Keeps the Forge mixin manifest registration from r3.
+          - Keeps the `pack.mcmeta` resource metadata fix from r2.
           - MixinExtras 0.5.5 remains bundled inside the JAR.
 
           ### Port details
