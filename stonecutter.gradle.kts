@@ -35,6 +35,19 @@ stonecutter parameters {
             replace("invertMouseY()", "invertYMouse()")
         }
 
+        // Forge 1.20.1 already captures/cancels screen rendering through
+        // SpatialGUIRenderer's ScreenEvent.Render.Pre listener. The upstream
+        // NeoForge GameRenderer redirect is therefore redundant on Forge and
+        // can legitimately have zero matches after Forge/Connector transforms.
+        // Keep the fallback method compiled, but don't make a missing internal
+        // ForgeHooksClient call site a fatal mixin error.
+        string(current.project.endsWith("-forge")) {
+            replace(
+                "@Redirect(method = \"render\", at = @At(\n            value = \"INVOKE\",\n            target = \"Lnet/neoforged/neoforge/client/ClientHooks;drawScreen(Lnet/minecraft/client/gui/screens/Screen;Lnet/minecraft/client/gui/GuiGraphics;IIF)V\"",
+                "@Redirect(method = \"render\", require = 0, at = @At(\n            value = \"INVOKE\",\n            target = \"Lnet/minecraftforge/client/ForgeHooksClient;drawScreen(Lnet/minecraft/client/gui/screens/Screen;Lnet/minecraft/client/gui/GuiGraphics;IIF)V\""
+            )
+        }
+
         string(current.project.endsWith("-forge")) {
             replace("net.neoforged.neoforge.client.ClientHooks", "net.minecraftforge.client.ForgeHooksClient")
         }
