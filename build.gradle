@@ -1,10 +1,12 @@
 buildscript {
     repositories {
         maven { url = 'https://maven.minecraftforge.net' }
+        maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
         mavenCentral()
     }
     dependencies {
         classpath 'net.minecraftforge.gradle:ForgeGradle:[6.0,6.2)'
+        classpath 'org.spongepowered:mixingradle:0.7-SNAPSHOT'
     }
 }
 
@@ -37,6 +39,7 @@ if (isForge) {
     project.ext.cloth_config_version = currentVersions.cloth_config
     project.ext.forge_version = currentVersions.forge
     apply plugin: 'net.minecraftforge.gradle'
+    apply plugin: 'org.spongepowered.mixin'
 
     base {
         archivesName = "${project.archives_base_name}-${project.version}+${project.minecraft_version}-${loader}"
@@ -46,11 +49,16 @@ if (isForge) {
         mavenCentral()
         maven { name = "Cloth Config"; url = "https://maven.shedaniel.me/" }
         maven { name = "Forge"; url = "https://maven.minecraftforge.net" }
+        maven { name = "Sponge"; url = "https://repo.spongepowered.org/repository/maven-public/" }
     }
 
     dependencies {
         minecraft "net.minecraftforge:forge:${project.forge_version}"
         implementation fg.deobf("me.shedaniel.cloth:cloth-config-forge:${project.cloth_config_version}")
+
+        // Generate the production refmap used to remap named Mixin targets to
+        // Forge/SRG runtime names in an obfuscated Minecraft 1.20.1 client.
+        annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
         // Spatial GUI uses MixinExtras injectors such as @WrapMethod,
         // @ModifyExpressionValue and @ModifyReturnValue. Forge 1.20.1 does
@@ -61,9 +69,13 @@ if (isForge) {
         }
     }
 
+    mixin {
+        add sourceSets.main, "spatial-gui.refmap.json"
+        config "spatial-gui.mixins.json"
+    }
+
     // Forge 1.20.1 does not consume NeoForge's [[mixins]] mods.toml table.
-    // Register the mixin config through the JAR manifest so GameRendererInvoker
-    // and the rest of Spatial GUI's mixins are actually applied at runtime.
+    // Register the mixin config through the JAR manifest.
     tasks.withType(org.gradle.api.tasks.bundling.Jar).configureEach {
         manifest {
             attributes 'MixinConfigs': 'spatial-gui.mixins.json'
