@@ -55,7 +55,7 @@ public class SpatialGUIKeybinds {
 
     private static void tick(Minecraft mc) {
         while (openConfig.consumeClick()) {
-            Screen screen = me.shedaniel.autoconfig.AutoConfigClient.getConfigScreen(SpatialGUIConfig.class, null).get();
+            Screen screen = me.shedaniel.autoconfig.AutoConfig.getConfigScreen(SpatialGUIConfig.class, null).get();
             //? if >=26.1 {
             mc.setScreenAndShow(screen);
             //?} else {
