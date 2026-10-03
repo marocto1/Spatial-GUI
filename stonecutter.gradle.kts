@@ -30,5 +30,12 @@ stonecutter parameters {
                 "me.shedaniel.autoconfig.AutoConfig.getConfigScreen"
             )
         }
+
+        string(node.metadata.project.endsWith("-forge")) {
+            replace(
+                "net.neoforged.neoforge.client.ClientHooks",
+                "net.minecraftforge.client.ForgeHooksClient"
+            )
+        }
     }
 }
