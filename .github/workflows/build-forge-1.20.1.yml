@@ -25,7 +25,7 @@ jobs:
         run: chmod +x gradlew
       - name: Build Forge 1.20.1
         run: ./gradlew :1.20.1-forge:build --stacktrace
-      - name: Verify Forge mixin metadata and 1.20.1 hooks
+      - name: Verify Forge 1.20.1 build
         run: |
           JAR="versions/1.20.1-forge/build/libs/spatial-gui-1.6+1.20.1-forge.jar"
           GAME_RENDERER="versions/1.20.1-forge/build/generated/stonecutter/main/java/org/tastytrash/spatialGUI/mixin/render/GameRendererMixin.java"
@@ -33,6 +33,7 @@ jobs:
           unzip -p "$JAR" META-INF/MANIFEST.MF | tee manifest.txt
           grep -F "MixinConfigs: spatial-gui.mixins.json" manifest.txt
           unzip -l "$JAR" | grep -F "spatial-gui.refmap.json"
+          unzip -l "$JAR" | grep -F "pack.mcmeta"
           unzip -p "$JAR" spatial-gui.mixins.json | tee mixins.json
           grep -F '"refmap": "spatial-gui.refmap.json"' mixins.json
           unzip -p "$JAR" spatial-gui.refmap.json | grep -F 'renderBackground'
@@ -46,50 +47,55 @@ jobs:
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
-          name: spatial-gui-1.20.1-forge-r6
+          name: spatial-gui-1.6-forge-1.20.1
           path: versions/1.20.1-forge/build/libs/*.jar
           if-no-files-found: error
-      - name: Publish GitHub Release
+      - name: Replace revision history with initial release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RELEASE_TAG="v1.6-forge-1.20.1-r6"
-          RELEASE_TITLE="Spatial GUI 1.6 — Forge 1.20.1 Backport r6"
+          RELEASE_TAG="v1.6-forge-1.20.1"
+          RELEASE_TITLE="Spatial GUI 1.6 — Forge 1.20.1 Backport"
           RELEASE_JAR="versions/1.20.1-forge/build/libs/spatial-gui-1.6+1.20.1-forge.jar"
 
+          for TAG in \
+            v1.6-forge-1.20.1 \
+            v1.6-forge-1.20.1-r2 \
+            v1.6-forge-1.20.1-r3 \
+            v1.6-forge-1.20.1-r4 \
+            v1.6-forge-1.20.1-r5 \
+            v1.6-forge-1.20.1-r6
+          do
+            gh release delete "$TAG" --cleanup-tag -y 2>/dev/null || true
+          done
+
           cat > release-notes.md <<'EOF'
-          ## Spatial GUI 1.6 — Forge 1.20.1 Backport r6
+          ## Spatial GUI 1.6 — Forge 1.20.1 Backport
 
-          This is the **sixth revision of the unofficial Spatial GUI 1.6 backport for Minecraft 1.20.1 Forge**.
+          Unofficial community backport of **Spatial GUI 1.6** for **Minecraft 1.20.1 Forge**.
 
-          ### What changed in r6
+          ### Compatibility
 
-          - Fixed the Minecraft 1.20.1 `HudMixin` startup crash.
-          - Removed legacy HUD injection targets (`renderScoreboardSidebar`, `renderOverlayMessage`, `renderTitle`, `renderChat`, `renderTabList`) from the generated 1.20.1 hook path.
-          - Ports the `hideHud` behaviour to the `Options.hideGui` access inside `Gui.render`, which matches the 1.20.1 HUD pipeline.
-          - Keeps the Forge `ScreenEvent.Render.Pre` capture path and non-fatal GameRenderer fallback from r5.
-          - Keeps the production Mixin refmap fix from r4.
-          - Keeps the Forge mixin manifest registration from r3.
-          - Keeps the `pack.mcmeta` resource metadata fix from r2.
-          - MixinExtras 0.5.5 remains bundled inside the JAR.
+          - Minecraft **1.20.1**
+          - Forge **47.4.x**
+          - Java **17**
+          - Cloth Config **11.x for Forge** required
+          - MixinExtras **0.5.5** bundled in the JAR
 
-          ### Port details
+          ### Forge 1.20.1 port
 
-          - Minecraft: **1.20.1**
-          - Mod loader: **Forge 47.4.x**
-          - Java: **17**
-          - Spatial GUI base version: **1.6**
-          - Required dependency: **Cloth Config 11.x for Forge**
-          - The final JAR is reobfuscated and built automatically through GitHub Actions
+          This build ports Spatial GUI's client rendering and interaction systems to the Minecraft 1.20.1 Forge pipeline, including Forge screen events, keybind handling, production Mixin mappings/refmap, HUD handling, resource metadata and reobfuscated distribution packaging.
 
-          ### Important
+          The backport keeps the original Spatial GUI concept and behaviour while adapting loader- and version-specific hooks for Forge 47.4.x.
 
-          This is **not an official upstream Spatial GUI release**. It is an unofficial compatibility backport/fork for Minecraft 1.20.1 Forge.
+          ### Credits and license
+
+          This is **not an official upstream Spatial GUI release**.
 
           Original project by **tastytrash**:
           https://github.com/tastytrash/Spatial-GUI
 
-          The original project is distributed under the **MIT License**. Attribution and license are preserved.
+          Spatial GUI is distributed under the **MIT License**. Original attribution and license are preserved in this backport.
 
           ### Socials
 
@@ -97,14 +103,7 @@ jobs:
           https://t.me/MaroctoDestiny
           EOF
 
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "$RELEASE_JAR" --clobber
-            gh release edit "$RELEASE_TAG" \
-              --title "$RELEASE_TITLE" \
-              --notes-file release-notes.md
-          else
-            gh release create "$RELEASE_TAG" "$RELEASE_JAR" \
-              --target forge-1.20.1 \
-              --title "$RELEASE_TITLE" \
-              --notes-file release-notes.md
-          fi
+          gh release create "$RELEASE_TAG" "$RELEASE_JAR" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TITLE" \
+            --notes-file release-notes.md
