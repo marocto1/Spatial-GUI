@@ -50,24 +50,13 @@ jobs:
           name: spatial-gui-1.6-forge-1.20.1
           path: versions/1.20.1-forge/build/libs/*.jar
           if-no-files-found: error
-      - name: Replace revision history with initial release
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           RELEASE_TAG="v1.6-forge-1.20.1"
           RELEASE_TITLE="Spatial GUI 1.6 — Forge 1.20.1 Backport"
           RELEASE_JAR="versions/1.20.1-forge/build/libs/spatial-gui-1.6+1.20.1-forge.jar"
-
-          for TAG in \
-            v1.6-forge-1.20.1 \
-            v1.6-forge-1.20.1-r2 \
-            v1.6-forge-1.20.1-r3 \
-            v1.6-forge-1.20.1-r4 \
-            v1.6-forge-1.20.1-r5 \
-            v1.6-forge-1.20.1-r6
-          do
-            gh release delete "$TAG" --cleanup-tag -y 2>/dev/null || true
-          done
 
           cat > release-notes.md <<'EOF'
           ## Spatial GUI 1.6 — Forge 1.20.1 Backport
@@ -103,7 +92,14 @@ jobs:
           https://t.me/MaroctoDestiny
           EOF
 
-          gh release create "$RELEASE_TAG" "$RELEASE_JAR" \
-            --target "$GITHUB_SHA" \
-            --title "$RELEASE_TITLE" \
-            --notes-file release-notes.md
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$RELEASE_JAR" --clobber
+            gh release edit "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" "$RELEASE_JAR" \
+              --target forge-1.20.1 \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md
+          fi
