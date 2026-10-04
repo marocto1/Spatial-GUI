@@ -13,7 +13,7 @@ jobs:
   compat:
     name: compat-${{ matrix.suite }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 18
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -31,51 +31,64 @@ jobs:
       - name: Make wrapper executable
         run: chmod +x gradlew
 
-      - name: Build Spatial GUI Forge 1.20.1
-        run: ./gradlew :1.20.1-forge:build --stacktrace
-
-      - name: Download compatibility mods from Modrinth
+      - name: Resolve and deobfuscate compatibility mods
         shell: bash
         run: |
           set -euo pipefail
-          MODS_DIR="$GITHUB_WORKSPACE/versions/1.20.1-forge/run/mods"
-          mkdir -p "$MODS_DIR"
 
-          download_mod() {
+          modrinth_version() {
             local slug="$1"
-            local json url filename
-            json=$(curl -fsSLG "https://api.modrinth.com/v2/project/${slug}/version" \
+            curl -fsSLG "https://api.modrinth.com/v2/project/${slug}/version" \
               --data-urlencode 'loaders=["forge"]' \
-              --data-urlencode 'game_versions=["1.20.1"]')
-            url=$(printf '%s' "$json" | jq -r '.[0].files[] | select(.primary == true) | .url' | head -n 1)
-            if [ -z "$url" ] || [ "$url" = "null" ]; then
-              url=$(printf '%s' "$json" | jq -r '.[0].files[0].url')
-            fi
-            test -n "$url"
-            test "$url" != "null"
-            filename=$(basename "${url%%\?*}")
-            echo "Downloading ${slug}: ${filename}"
-            curl -fL "$url" -o "$MODS_DIR/$filename"
+              --data-urlencode 'game_versions=["1.20.1"]' \
+              | jq -r '.[0].version_number'
+          }
+
+          COORDS=''
+          add_coord() {
+            local slug="$1"
+            local version
+            version=$(modrinth_version "$slug")
+            test -n "$version"
+            test "$version" != 'null'
+            local coord="maven.modrinth:${slug}:${version}"
+            if [ -z "$COORDS" ]; then COORDS="$coord"; else COORDS="$COORDS;$coord"; fi
+            echo "Resolved ${slug} -> ${version}"
           }
 
           case "${{ matrix.suite }}" in
-            jei)
-              download_mod jei
-              ;;
-            emi)
-              download_mod emi
-              ;;
-            embeddium)
-              download_mod embeddium
-              ;;
+            jei) add_coord jei ;;
+            emi) add_coord emi ;;
+            embeddium) add_coord embeddium ;;
             oculus)
-              download_mod embeddium
-              download_mod oculus
+              add_coord embeddium
+              add_coord oculus
               ;;
           esac
 
-          echo '--- external mods ---'
-          ls -lh "$MODS_DIR"
+          echo "SPATIAL_COMPAT_COORDS=$COORDS" >> "$GITHUB_ENV"
+
+          cat >> build.gradle <<'GRADLE'
+
+          // Audit-only compatibility dependencies. Production Modrinth jars use
+          // SRG/obfuscated names, so ForgeGradle must deobfuscate them before
+          // forgeclientuserdev can load their mixins and Minecraft references.
+          if (isForge && System.getenv('SPATIAL_COMPAT_COORDS')) {
+              repositories {
+                  maven { url = uri('https://api.modrinth.com/maven') }
+              }
+              dependencies {
+                  System.getenv('SPATIAL_COMPAT_COORDS').split(';').each { coord ->
+                      runtimeOnly fg.deobf(coord)
+                  }
+              }
+          }
+          GRADLE
+
+          tail -n 20 build.gradle
+
+      - name: Build Spatial GUI and mapped compatibility runtime
+        run: ./gradlew :1.20.1-forge:build --stacktrace
 
       - name: Prepare disposable singleplayer world
         shell: bash
@@ -114,7 +127,7 @@ jobs:
           LOG='versions/1.20.1-forge/run/logs/latest.log'
 
           WORLD_READY=0
-          for i in $(seq 1 180); do
+          for i in $(seq 1 210); do
             if [ -f "$LOG" ] && grep -E -q \
               'Starting integrated minecraft server|Preparing start region|Time elapsed:|Loaded [0-9]+ advancements' "$LOG"; then
               WORLD_READY=1
@@ -126,7 +139,7 @@ jobs:
 
           if [ "$WORLD_READY" -ne 1 ]; then
             echo 'World did not reach integrated server stage.'
-            tail -n 260 "$LOG" 2>/dev/null || true
+            tail -n 320 "$LOG" 2>/dev/null || true
             exit 1
           fi
 
@@ -144,14 +157,14 @@ jobs:
 
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
             echo 'Minecraft exited during compatibility smoke window.'
-            tail -n 320 "$LOG" || true
+            tail -n 360 "$LOG" || true
             exit 1
           fi
 
           if grep -E -i \
             'Mixin apply.*failed|InvalidInjectionException|MixinTransformerError|ClassCastException|NoClassDefFoundError|NoSuchMethodError|NoSuchFieldError|org\.tastytrash\.spatialGUI.*(Exception|Error)' "$LOG"; then
             echo 'Fatal compatibility signature detected.'
-            tail -n 320 "$LOG" || true
+            tail -n 360 "$LOG" || true
             exit 1
           fi
 
@@ -185,7 +198,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: spatial-gui-compat-${{ matrix.suite }}
+          name: spatial-gui-compat-mapped-${{ matrix.suite }}
           path: |
             compat-output/
             versions/1.20.1-forge/run/logs/latest.log
