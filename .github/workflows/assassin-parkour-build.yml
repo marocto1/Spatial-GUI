@@ -1,0 +1,86 @@
+name: Build Assassin Parkour
+
+on:
+  push:
+    branches:
+      - ci/assassin-parkour-build
+    paths:
+      - 'ci/AssassinParkour-B10.zip.b64'
+      - '.github/workflows/assassin-parkour-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout CI branch
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Decode B10 payload
+        shell: pwsh
+        run: |
+          $raw = Get-Content 'ci/AssassinParkour-B10.zip.b64' -Raw
+          [IO.File]::WriteAllBytes('AssassinParkour-B10.zip', [Convert]::FromBase64String($raw.Trim()))
+          Expand-Archive -Path 'AssassinParkour-B10.zip' -DestinationPath 'overlay' -Force
+
+      - name: Checkout ParCool 1.20.1-v4
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch 1.20.1-v4 https://github.com/alRex-U/ParCool.git parcool
+          git -C parcool rev-parse HEAD
+
+      - name: Apply Assassin Parkour B10
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass -Force
+          ./overlay/tools/APPLY_B10.ps1 -ParCoolSource "$PWD/parcool"
+
+      - name: Verify patched source
+        shell: pwsh
+        run: |
+          python ./overlay/tools/VERIFY_B10.py
+          Select-String -Path 'parcool/gradle.properties' -Pattern 'minecraft_version=1.20.1','mod_version=4.0.0.6'
+
+      - name: Build Forge mod
+        shell: pwsh
+        working-directory: parcool
+        run: |
+          ./gradlew.bat clean build --stacktrace --no-daemon
+
+      - name: List build outputs
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path 'parcool/build/libs') {
+            Get-ChildItem 'parcool/build/libs' -File | Select-Object Name,Length,LastWriteTime
+          }
+
+      - name: Upload Assassin Parkour JAR
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AssassinParkour-1.20.1-B10
+          path: |
+            parcool/build/libs/*.jar
+            parcool/NOTICE_ASSASSIN_PARKOUR.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AssassinParkour-build-failure
+          path: |
+            parcool/build/reports/**
+            parcool/build/tmp/**
+          if-no-files-found: ignore
+          retention-days: 7
