@@ -76,14 +76,12 @@ public class HudMixin {
                 && SpatialGUIClient.renderer().getHookedScreen() != null;
     }
     *///?} else {
-    /*@Inject(method = {"renderScoreboardSidebar", "renderOverlayMessage", "renderTitle", "renderChat", "renderTabList"},
-            at = @At("HEAD"), cancellable = true)
-    private void spatialGUI$hideHud(CallbackInfo ci) {
-        if (SpatialGUIClient.isEnabled() && SpatialGUI.config.hideHud
+    /*@ModifyExpressionValue(method = "render", at = @At(value = "FIELD", target = "Lnet/minecraft/client/Options;hideGui:Z"), require = 0)
+    private boolean spatialGUI$hideHud(boolean original) {
+        if (original) return true;
+        return SpatialGUIClient.isEnabled() && SpatialGUI.config.hideHud
                 && SpatialGUIClient.renderer() != null
-                && SpatialGUIClient.renderer().getHookedScreen() != null) {
-            ci.cancel();
-        }
+                && SpatialGUIClient.renderer().getHookedScreen() != null;
     }
     *///?}
 
