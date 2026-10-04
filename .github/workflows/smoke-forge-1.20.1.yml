@@ -95,7 +95,9 @@ jobs:
             kill "$XVFB_PID" 2>/dev/null || true
             exit 1
           fi
-          xdotool windowactivate --sync "$WINDOW"
+          echo "Minecraft window: $WINDOW ($(xdotool getwindowname "$WINDOW" 2>/dev/null || true))"
+          # Xvfb has no EWMH window manager, so windowactivate cannot work. XSetInputFocus does.
+          xdotool windowfocus --sync "$WINDOW"
           xdotool key --window "$WINDOW" e
           echo 'Sent inventory key (E) to Minecraft.'
 
