@@ -12,7 +12,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -24,57 +24,129 @@ jobs:
         run: chmod +x gradlew
       - name: Build Forge 1.20.1
         run: ./gradlew :1.20.1-forge:build --stacktrace
-      - name: Launch real Forge client under Xvfb
+
+      - name: Prepare disposable singleplayer world
         shell: bash
         run: |
+          set -euo pipefail
+          VERSION_URL=$(curl -fsSL https://piston-meta.mojang.com/mc/game/version_manifest_v2.json \
+            | jq -r '.versions[] | select(.id == "1.20.1") | .url')
+          SERVER_URL=$(curl -fsSL "$VERSION_URL" | jq -r '.downloads.server.url')
+          mkdir -p /tmp/mc-worldgen
+          cd /tmp/mc-worldgen
+          curl -fsSL "$SERVER_URL" -o server.jar
+          printf 'eula=true\n' > eula.txt
+          printf 'level-name=world\nonline-mode=false\nview-distance=2\nsimulation-distance=2\n' > server.properties
+          (sleep 35; echo stop) | java -Xms512M -Xmx1G -jar server.jar nogui > worldgen.log 2>&1
+          test -f world/level.dat
+          mkdir -p "$GITHUB_WORKSPACE/versions/1.20.1-forge/run/saves"
+          cp -a world "$GITHUB_WORKSPACE/versions/1.20.1-forge/run/saves/SmokeWorld"
+
+          # Audit branch only: make the ForgeGradle client jump directly into the generated world.
+          cd "$GITHUB_WORKSPACE"
+          sed -i "/property 'forge.logging.console.level', 'info'/a\\                args '--quickPlaySingleplayer', 'SmokeWorld'" build.gradle
+
+      - name: Launch world and open inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xdotool >/dev/null
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 > xvfb.log 2>&1 &
+          XVFB_PID=$!
+          sleep 2
+
           set +e
-          timeout --signal=INT --kill-after=15s 120s \
-            xvfb-run -a -s '-screen 0 1280x720x24' \
-            ./gradlew :1.20.1-forge:runClient --no-daemon --stacktrace \
-            > smoke-console.log 2>&1
-          STATUS=$?
+          ./gradlew :1.20.1-forge:runClient --no-daemon --stacktrace > smoke-console.log 2>&1 &
+          CLIENT_PID=$!
           set -e
 
           LOG='versions/1.20.1-forge/run/logs/latest.log'
-          echo "runClient exit status: $STATUS"
-          echo '--- console tail ---'
-          tail -n 120 smoke-console.log || true
-          echo '--- latest.log tail ---'
-          if [ -f "$LOG" ]; then
-            tail -n 180 "$LOG"
-          else
-            echo 'latest.log was not created'
+          WORLD_READY=0
+          for i in $(seq 1 150); do
+            if [ -f "$LOG" ] && grep -E -q \
+              'Starting integrated minecraft server|Preparing start region|Preparing spawn area|Time elapsed:|Loaded [0-9]+ advancements' \
+              "$LOG"; then
+              WORLD_READY=1
+              break
+            fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$WORLD_READY" -ne 1 ]; then
+            echo 'Singleplayer world did not reach the integrated-server stage.'
+            tail -n 220 "$LOG" 2>/dev/null || true
+            kill "$CLIENT_PID" 2>/dev/null || true
+            kill "$XVFB_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          # Give the first world frame time to render, then open the default inventory (E).
+          sleep 15
+          WINDOW=$(xdotool search --name 'Minecraft' 2>/dev/null | head -n 1 || true)
+          if [ -z "$WINDOW" ]; then
+            echo 'Minecraft window not found.'
+            kill "$CLIENT_PID" 2>/dev/null || true
+            kill "$XVFB_PID" 2>/dev/null || true
+            exit 1
+          fi
+          xdotool windowactivate --sync "$WINDOW"
+          xdotool key --window "$WINDOW" e
+          echo 'Sent inventory key (E) to Minecraft.'
+
+          # This is the critical window: previous port failures happened as inventory rendering began.
+          sleep 25
+
+          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
+            echo 'Minecraft process exited after opening inventory.'
+            tail -n 260 "$LOG" || true
+            kill "$XVFB_PID" 2>/dev/null || true
             exit 1
           fi
 
           if grep -E -i \
-            'Mixin apply for mod spatial_gui failed|InvalidInjectionException|MixinTransformerError|ClassCastException.*spatialGUI|NoClassDefFoundError.*spatialGUI|NoSuchMethodError.*spatialGUI|NoSuchFieldError.*spatialGUI' \
+            'Mixin apply for mod spatial_gui failed|InvalidInjectionException|MixinTransformerError|ClassCastException.*spatialGUI|NoClassDefFoundError.*spatialGUI|NoSuchMethodError.*spatialGUI|NoSuchFieldError.*spatialGUI|org\.tastytrash\.spatialGUI.*(Exception|Error)' \
             "$LOG"; then
-            echo 'Spatial GUI fatal runtime signature detected.'
+            echo 'Spatial GUI fatal runtime signature detected after world/inventory test.'
+            kill "$CLIENT_PID" 2>/dev/null || true
+            kill "$XVFB_PID" 2>/dev/null || true
             exit 1
           fi
 
-          if ! grep -E -q \
-            'Initializing Spatial GUI|Backend library: LWJGL|Reloading ResourceManager|OpenAL initialized' \
+          grep -E 'Initializing Spatial GUI|Starting integrated minecraft server|Preparing start region|Preparing spawn area|Time elapsed:|Loaded [0-9]+ advancements' "$LOG" || true
+          echo 'World + inventory smoke window passed.'
+
+          kill -INT "$CLIENT_PID" 2>/dev/null || true
+          sleep 5
+          kill -KILL "$CLIENT_PID" 2>/dev/null || true
+          kill "$XVFB_PID" 2>/dev/null || true
+
+      - name: Verify logs
+        shell: bash
+        run: |
+          LOG='versions/1.20.1-forge/run/logs/latest.log'
+          test -f "$LOG"
+          grep -F 'Initializing Spatial GUI' "$LOG"
+          if grep -E -i \
+            'Mixin apply for mod spatial_gui failed|InvalidInjectionException|MixinTransformerError|ClassCastException.*spatialGUI|NoClassDefFoundError.*spatialGUI|NoSuchMethodError.*spatialGUI|NoSuchFieldError.*spatialGUI|org\.tastytrash\.spatialGUI.*(Exception|Error)' \
             "$LOG"; then
-            echo 'Client did not reach a meaningful Minecraft startup stage.'
             exit 1
           fi
+          echo 'Forge 1.20.1 world/inventory smoke test passed.'
 
-          # 124 means timeout killed a still-running client after the smoke window.
-          # That is expected once Minecraft reaches the menu and waits for input.
-          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 124 ] && [ "$STATUS" -ne 130 ]; then
-            echo "runClient exited unexpectedly with status $STATUS"
-            exit "$STATUS"
-          fi
-
-          echo 'Forge 1.20.1 smoke test passed: no Spatial GUI fatal startup/mixin error found.'
       - name: Upload smoke logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: spatial-gui-forge-1.20.1-smoke-logs
+          name: spatial-gui-forge-1.20.1-world-inventory-smoke
           path: |
             smoke-console.log
+            xvfb.log
             versions/1.20.1-forge/run/logs/latest.log
+            /tmp/mc-worldgen/worldgen.log
           if-no-files-found: warn
