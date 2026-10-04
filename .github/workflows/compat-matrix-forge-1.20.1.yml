@@ -1,0 +1,191 @@
+name: Forge 1.20.1 Compatibility Matrix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compat:
+    name: compat-${{ matrix.suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [jei, emi, embeddium, oculus]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Make wrapper executable
+        run: chmod +x gradlew
+
+      - name: Build Spatial GUI Forge 1.20.1
+        run: ./gradlew :1.20.1-forge:build --stacktrace
+
+      - name: Download compatibility mods from Modrinth
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODS_DIR="$GITHUB_WORKSPACE/versions/1.20.1-forge/run/mods"
+          mkdir -p "$MODS_DIR"
+
+          download_mod() {
+            local slug="$1"
+            local json url filename
+            json=$(curl -fsSLG "https://api.modrinth.com/v2/project/${slug}/version" \
+              --data-urlencode 'loaders=["forge"]' \
+              --data-urlencode 'game_versions=["1.20.1"]')
+            url=$(printf '%s' "$json" | jq -r '.[0].files[] | select(.primary == true) | .url' | head -n 1)
+            if [ -z "$url" ] || [ "$url" = "null" ]; then
+              url=$(printf '%s' "$json" | jq -r '.[0].files[0].url')
+            fi
+            test -n "$url"
+            test "$url" != "null"
+            filename=$(basename "${url%%\?*}")
+            echo "Downloading ${slug}: ${filename}"
+            curl -fL "$url" -o "$MODS_DIR/$filename"
+          }
+
+          case "${{ matrix.suite }}" in
+            jei)
+              download_mod jei
+              ;;
+            emi)
+              download_mod emi
+              ;;
+            embeddium)
+              download_mod embeddium
+              ;;
+            oculus)
+              download_mod embeddium
+              download_mod oculus
+              ;;
+          esac
+
+          echo '--- external mods ---'
+          ls -lh "$MODS_DIR"
+
+      - name: Prepare disposable singleplayer world
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_URL=$(curl -fsSL https://piston-meta.mojang.com/mc/game/version_manifest_v2.json \
+            | jq -r '.versions[] | select(.id == "1.20.1") | .url')
+          SERVER_URL=$(curl -fsSL "$VERSION_URL" | jq -r '.downloads.server.url')
+          mkdir -p /tmp/mc-worldgen
+          cd /tmp/mc-worldgen
+          curl -fsSL "$SERVER_URL" -o server.jar
+          printf 'eula=true\n' > eula.txt
+          printf 'level-name=world\nonline-mode=false\nview-distance=2\nsimulation-distance=2\n' > server.properties
+          (sleep 35; echo stop) | java -Xms512M -Xmx1G -jar server.jar nogui > worldgen.log 2>&1
+          test -f world/level.dat
+          mkdir -p "$GITHUB_WORKSPACE/versions/1.20.1-forge/run/saves"
+          cp -a world "$GITHUB_WORKSPACE/versions/1.20.1-forge/run/saves/SmokeWorld"
+
+          cd "$GITHUB_WORKSPACE"
+          sed -i "/property 'forge.logging.console.level', 'info'/a\\                args '--quickPlaySingleplayer', 'SmokeWorld'" build.gradle
+
+      - name: Launch world, open inventory, capture screenshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xdotool >/dev/null
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 > xvfb.log 2>&1 &
+          XVFB_PID=$!
+          sleep 2
+
+          ./gradlew :1.20.1-forge:runClient --no-daemon --stacktrace > smoke-console.log 2>&1 &
+          CLIENT_PID=$!
+          LOG='versions/1.20.1-forge/run/logs/latest.log'
+
+          WORLD_READY=0
+          for i in $(seq 1 180); do
+            if [ -f "$LOG" ] && grep -E -q \
+              'Starting integrated minecraft server|Preparing start region|Time elapsed:|Loaded [0-9]+ advancements' "$LOG"; then
+              WORLD_READY=1
+              break
+            fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+
+          if [ "$WORLD_READY" -ne 1 ]; then
+            echo 'World did not reach integrated server stage.'
+            tail -n 260 "$LOG" 2>/dev/null || true
+            exit 1
+          fi
+
+          sleep 15
+          WINDOW=$(xdotool search --name 'Minecraft' 2>/dev/null | head -n 1 || true)
+          test -n "$WINDOW"
+          echo "Minecraft window: $WINDOW ($(xdotool getwindowname "$WINDOW" 2>/dev/null || true))"
+          xdotool windowfocus --sync "$WINDOW"
+          xdotool key --window "$WINDOW" e
+          echo 'Sent inventory key (E).'
+          sleep 8
+          xdotool key --window "$WINDOW" F2
+          echo 'Requested Minecraft screenshot (F2).'
+          sleep 17
+
+          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
+            echo 'Minecraft exited during compatibility smoke window.'
+            tail -n 320 "$LOG" || true
+            exit 1
+          fi
+
+          if grep -E -i \
+            'Mixin apply.*failed|InvalidInjectionException|MixinTransformerError|ClassCastException|NoClassDefFoundError|NoSuchMethodError|NoSuchFieldError|org\.tastytrash\.spatialGUI.*(Exception|Error)' "$LOG"; then
+            echo 'Fatal compatibility signature detected.'
+            tail -n 320 "$LOG" || true
+            exit 1
+          fi
+
+          mkdir -p compat-output
+          cp "$LOG" "compat-output/latest-${{ matrix.suite }}.log"
+          cp smoke-console.log "compat-output/console-${{ matrix.suite }}.log"
+          cp xvfb.log "compat-output/xvfb-${{ matrix.suite }}.log"
+          find versions/1.20.1-forge/run/screenshots -type f -name '*.png' -print -exec cp {} compat-output/ \; 2>/dev/null || true
+
+          echo "Compatibility smoke passed for ${{ matrix.suite }}."
+          kill -INT "$CLIENT_PID" 2>/dev/null || true
+          sleep 3
+          kill -KILL "$CLIENT_PID" 2>/dev/null || true
+          kill "$XVFB_PID" 2>/dev/null || true
+
+      - name: Verify expected mod loaded and Spatial GUI initialized
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="compat-output/latest-${{ matrix.suite }}.log"
+          grep -F 'Initializing Spatial GUI' "$LOG"
+          case "${{ matrix.suite }}" in
+            jei) grep -Ei 'jei|Just Enough Items' "$LOG" >/dev/null ;;
+            emi) grep -Ei 'emi' "$LOG" >/dev/null ;;
+            embeddium) grep -Ei 'embeddium' "$LOG" >/dev/null ;;
+            oculus) grep -Ei 'oculus' "$LOG" >/dev/null && grep -Ei 'embeddium' "$LOG" >/dev/null ;;
+          esac
+          echo "Verified ${{ matrix.suite }} was present in the runtime log."
+
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spatial-gui-compat-${{ matrix.suite }}
+          path: |
+            compat-output/
+            versions/1.20.1-forge/run/logs/latest.log
+            smoke-console.log
+            /tmp/mc-worldgen/worldgen.log
+          if-no-files-found: warn
